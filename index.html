@@ -25,6 +25,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chance/1.1.11/chance.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r16/Stats.min.js"></script>
 
+    <!-- WebLLM for Local AI Model -->
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/dist/web-llm.mjs"></script>
+
     <style>
         .example-prompt-button {
             background-color: #eef2ff;
@@ -192,10 +195,13 @@
                             <h4 class="font-bold mb-2 text-sm">Pilih Model Aktif</h4>
                             <div class="space-y-1" id="model-list">
                                 <button class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('falcon')">🪶 Falcon 2</button>
-                                <button class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('gemini')">✨ Gemini 2.5</button>
+                                <button class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('gemini')">✨ Gemini 1.5 Pro</button>
                                 <button class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('deepseek')">💻 DeepSeek V2</button>
                                 <button class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('chatgpt')">🤖 ChatGPT-4o</button>
                                 <button class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('claude')">✍️ Claude 3.5</button>
+                                <button class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('tinylama')">🦙 TinyLlama (Lokal)</button>
+                                <button class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('qwen')">🐉 Qwen (Lokal)</button>
+                                <button id="webllm-model-btn" class="w-full text-left text-sm p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700" onclick="switchActiveModel('webllm')">🧠 WebLLM (Lokal)</button>
                             </div>
                         </div>
                     </details>
@@ -257,6 +263,10 @@
                 </style>
                 <div class="flex items-center justify-center w-28 flex-shrink-0" title="Deep Research Mode">
                     <label for="deep-research-toggle" class="flex items-center cursor-pointer">
+                        <button type="button" id="tts-toggle-btn" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-700 text-gray-600 dark:text-white p-2 rounded-full transition duration-300 flex-shrink-0 mr-2" title="Aktifkan/Nonaktifkan Suara">
+                            <!-- Ikon akan diisi oleh JavaScript -->
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M13.28 3.97a.75.75 0 010 1.06L6.31 12l6.97 6.97a.75.75 0 11-1.06 1.06l-7.5-7.5a.75.75 0 010-1.06l7.5-7.5a.75.75 0 011.06 0zm6 0a.75.75 0 010 1.06L12.31 12l6.97 6.97a.75.75 0 11-1.06 1.06l-7.5-7.5a.75.75 0 010-1.06l7.5-7.5a.75.75 0 011.06 0z" clip-rule="evenodd" /></svg>
+                        </button>
                         <div class="relative">
                             <input type="checkbox" id="deep-research-toggle" class="sr-only toggle-checkbox">
                             <div class="toggle-label block bg-gray-200 dark:bg-gray-600 w-12 h-7 rounded-full">
@@ -287,6 +297,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const expressionEl = document.getElementById('expression');
     const micBtn = document.getElementById('mic-btn');
     const submitBtn = inputForm.querySelector('button[type="submit"]');
+    const ttsToggleBtn = document.getElementById('tts-toggle-btn');
+    let isTtsEnabled = localStorage.getItem('isTtsEnabled') === 'true';
+    let voices = [];
+
+    // --- TTS (Text-to-Speech) Setup ---
+    const speakerOnIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.348 2.595.341 1.24 1.518 1.905 2.66 1.905H6.44l4.5 4.5c.944.945 2.56.276 2.56-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" /><path d="M15.932 7.757a.75.75 0 011.06 0 4.5 4.5 0 010 6.364.75.75 0 01-1.06-1.06 3 3 0 000-4.243.75.75 0 010-1.06z" /></svg>`;
+    const speakerOffIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.348 2.595.341 1.24 1.518 1.905 2.66 1.905H6.44l4.5 4.5c.944.945 2.56.276 2.56-1.06V4.06zM17.72 17.72a.75.75 0 10-1.06-1.06L18.94 15l-2.28-2.28a.75.75 0 00-1.06-1.06l-1.06 1.06-2.28-2.28a.75.75 0 00-1.06-1.06l-1.06 1.06L8.86 8.86a.75.75 0 10-1.06 1.06L10.06 12l-2.28 2.28a.75.75 0 101.06 1.06l2.28-2.28 1.06 1.06a.75.75 0 001.06 0l2.28-2.28 1.06 1.06a.75.75 0 101.06-1.06l-1.06-1.06 2.28 2.28z" /></svg>`;
+
     moment.locale('id');
     const themeToggleBtn = document.getElementById('theme-toggle-btn');
     const sunIcon = document.getElementById('theme-icon-sun');
@@ -303,6 +321,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeModel = localStorage.getItem('activeModel') || 'falcon'; // Default model
     window.activeMaps = {};
             window.tripState = {}; // Untuk melacak perjalanan real-time
+    let isWebLLMLoading = true; // Flag to track WebLLM loading state
+    let webLlmChat; // Variable to hold the WebLLM instance
     let currentSessionId = null;
     let waitingForApiKey = null;
     let db;
@@ -323,6 +343,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         requestAnimationFrame(animate);
     }
+
+    function loadVoices() {
+        voices = speechSynthesis.getVoices();
+    }
+    loadVoices();
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    function updateTtsButton() {
+        ttsToggleBtn.innerHTML = isTtsEnabled ? speakerOnIcon : speakerOffIcon;
+        if (isTtsEnabled) {
+            ttsToggleBtn.classList.add('text-indigo-500', 'dark:text-indigo-400');
+        } else {
+            ttsToggleBtn.classList.remove('text-indigo-500', 'dark:text-indigo-400');
+        }
+    }
+
+    function speakText(text) {
+        if (!isTtsEnabled || !text) return;
+
+        // Hentikan suara yang sedang berjalan
+        speechSynthesis.cancel();
+
+        // Bersihkan teks dari markdown dan tag HTML sederhana
+        const cleanText = text.replace(/<[^>]*>/g, ' ').replace(/(\*\*|__|\*|_|`)/g, '');
+
+        const msg = new SpeechSynthesisUtterance(cleanText);
+        msg.lang = "id-ID";
+
+        // Coba temukan suara Google Bahasa Indonesia
+        const indonesianVoice = voices.find(v => v.name === "Google Bahasa Indonesia" && v.lang === "id-ID");
+        if (indonesianVoice) {
+            msg.voice = indonesianVoice;
+        }
+
+        speechSynthesis.speak(msg);
+    }
+
     // --- Library Readiness Check ---
     function checkLibrariesReady() {
         expressionEl.placeholder = "Memuat pustaka matematika...";
@@ -347,7 +406,59 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 200); // Cek setiap 200ms
     }
 
+    function checkWebLLMReady() {
+        const webLlmBtn = document.getElementById('webllm-model-btn');
+        if (!webLlmBtn) return;
+
+        // Initial state
+        webLlmBtn.disabled = true;
+        webLlmBtn.innerHTML = '🧠 <span class="opacity-70">Memuat Model Lokal...</span>';
+
+        const checkInterval = setInterval(() => {
+            if (typeof webllm !== 'undefined' && webllm.ChatModule) {
+                clearInterval(checkInterval);
+                webLlmBtn.disabled = false;
+                webLlmBtn.innerHTML = '🧠 WebLLM (Lokal)';
+                isWebLLMLoading = false;
+                console.log("WebLLM is ready.");
+                // Jika model aktif adalah webllm, perbarui UI
+                if (activeModel === 'webllm') {
+                    updateActiveModelUI();
+                }
+            }
+        }, 500); // Check every 500ms
+    }
+
+    // --- Robust WebLLM Readiness Check using a Promise ---
+    let webLLMReadyPromise = new Promise(resolve => {
+        const interval = setInterval(() => {
+            if (typeof webllm !== 'undefined' && webllm.ChatModule) {
+                clearInterval(interval);
+                console.log("WebLLM library is ready.");
+                resolve();
+            }
+        }, 200); // Check every 200ms
+    });
+
+    function checkWebLLMReady() {
+        const localModelButtons = document.querySelectorAll('#model-list button[onclick*="Llama"], #model-list button[onclick*="Qwen"], #model-list button[onclick*="webllm"]');
+        
+        // Disable buttons while loading
+        localModelButtons.forEach(btn => {
+            btn.disabled = true;
+            btn.innerHTML += ' <span class="loading-text opacity-70 text-xs">(Memuat...)</span>';
+        });
+
+        webLLMReadyPromise.then(() => {
+            localModelButtons.forEach(btn => {
+                btn.disabled = false;
+                btn.querySelector('.loading-text')?.remove();
+            });
+        });
+    }
+
     checkLibrariesReady(); // Mulai pemeriksaan saat DOM siap
+    checkWebLLMReady();
 
     // Pindahkan listener untuk bg-settings-toggle-btn karena elemennya dipindah
     document.getElementById('bg-settings-toggle-btn').addEventListener('click', () => {
@@ -382,6 +493,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateActiveModelUI() {
         const modelButtons = document.querySelectorAll('#model-list button');
+        const webLlmBtn = document.getElementById('webllm-model-btn');
+        if (isWebLLMLoading && webLlmBtn) {
+            webLlmBtn.disabled = true;
+            webLlmBtn.innerHTML = '🧠 <span class="opacity-70">Memuat...</span>';
+        }
         modelButtons.forEach(btn => {
             if (btn.getAttribute('onclick').includes(`'${activeModel}'`)) {
                 btn.classList.add('bg-indigo-600', 'font-bold');
@@ -391,24 +507,34 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    window.switchActiveModel = (modelName) => {
+    window.switchActiveModel = async (modelName) => {
         if (isSwitchingModel || activeModel === modelName) return;
 
-        // Kecuali Falcon, model lain butuh API Key
-        if (modelName !== 'falcon' && !localStorage.getItem(`${modelName}_api_key`)) {
+        const localModels = ['webllm', 'tinylama', 'qwen'];
+        const modelsWithoutApiKey = ['falcon', ...localModels];
+
+        if (!modelsWithoutApiKey.includes(modelName) && !localStorage.getItem(`${modelName}_api_key`)) { // Cek API Key untuk model online
             waitingForApiKey = modelName;
             const readableName = modelName.charAt(0).toUpperCase() + modelName.slice(1);
             addMessageToUI('notification', marked.parse(`🔑 **API Key untuk ${readableName} belum diatur.**\n\nSilakan masukkan API Key Anda di bawah ini. Anda bisa mendapatkannya dari situs resmi masing-masing penyedia model AI.`));
             return;
         }
 
-        isSwitchingModel = true;
         activeModel = modelName;
         localStorage.setItem('activeModel', modelName);
         updateActiveModelUI();
         const readableName = modelName.charAt(0).toUpperCase() + modelName.slice(1);
         showToast(`Model aktif: <strong>${readableName}</strong>`, 'success');
 
+        // Jika model yang dipilih adalah model lokal dan belum di-cache, mulai proses unduh
+        if (localModels.includes(modelName)) {
+            const config = window.modelConfigs[modelName];
+            if (!window.localModels[config.id]) {
+                await handleLocalModelQuery(`Halo ${config.name}, apakah kamu sudah siap?`, modelName);
+            }
+        }
+
+        isSwitchingModel = true;
         setTimeout(() => {
             isSwitchingModel = false;
         }, 1000); // Cooldown 1 detik
@@ -549,6 +675,12 @@ document.addEventListener('DOMContentLoaded', () => {
             historySidebar.classList.add('-translate-x-full');
         }
     });
+    ttsToggleBtn.addEventListener('click', () => {
+        isTtsEnabled = !isTtsEnabled;
+        localStorage.setItem('isTtsEnabled', isTtsEnabled);
+        updateTtsButton();
+        if (!isTtsEnabled) speechSynthesis.cancel(); // Hentikan suara jika dinonaktifkan
+    });
     newChatBtn.addEventListener('click', () => {
         startNewChat();
         historySidebar.classList.add('-translate-x-full');
@@ -664,8 +796,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         iconEl.textContent = 'AI';
                     }
                 }
+                // PERBAIKAN: Hapus kelas 'prose' jika konten berisi tombol agar bisa diklik
+                if (newContent.includes('<button')) {
+                    aiMsg.classList.remove('prose', 'dark:prose-invert');
+                } else if (!aiMsg.classList.contains('prose')) {
+                    aiMsg.classList.add('prose', 'dark:prose-invert');
+                }
                 aiMsg.innerHTML = newContent;
                 if (isFinal && currentSessionId) {
+                    // --- Fitur AI Adaptif: Simpan ke memori ---
+                    const lastQuery = window.lastUserQuery || '';
+                    if (lastQuery) {
+                        saveToMemory(lastQuery, newContent);
+                    }
+
+                    speakText(newContent); // Panggil TTS di sini
                     await saveMessageToDB('ai', newContent, currentSessionId);
                 }
             }
@@ -676,6 +821,20 @@ document.addEventListener('DOMContentLoaded', () => {
         div.textContent = text;
         return div.innerHTML;
     }
+
+    // --- Fitur AI Adaptif (Personal Adaptive AI) ---
+    function saveToMemory(question, answer) {
+        let memory = JSON.parse(localStorage.getItem("ai_brain")) || [];
+        // Hapus markdown dari jawaban untuk memori yang lebih bersih
+        const cleanAnswer = answer.replace(/<[^>]*>/g, ' ').replace(/(\*\*|__|\*|_|`)/g, '');
+        memory.push({ question, answer: cleanAnswer });
+        // Batasi memori hingga 39 interaksi terakhir untuk menjaga efisiensi
+        if (memory.length > 39) {
+            memory = memory.slice(memory.length - 39);
+        }
+        localStorage.setItem("ai_brain", JSON.stringify(memory));
+    }
+
 
     // --- Chat History & Session Management ---
     async function ensureSession(query) {
@@ -895,6 +1054,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Main Input Processor ---
     async function processUserInput(query, isSystemTrigger = false) { // Menjadi async
         if (waitingForApiKey) {
+            window.lastUserQuery = query; // Simpan query terakhir
             addMessageToUI('user', '********');
             localStorage.setItem(`${waitingForApiKey}_api_key`, query); 
             const modelName = waitingForApiKey.charAt(0).toUpperCase() + waitingForApiKey.slice(1); 
@@ -904,13 +1064,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!isSystemTrigger) {
+            window.lastUserQuery = query; // Simpan query terakhir
             const sessionId = await ensureSession(query);
             addMessageToUI('user', query);
             await saveMessageToDB('user', query, sessionId);
         }
 
         // Cek toggle Deep Research
-        const deepResearchToggle = document.getElementById('deep-research-toggle');
+        const deepResearchToggle = document.getElementById('deep-research-toggle'); 
         if (deepResearchToggle && deepResearchToggle.checked) {
             searchWithSerper(query);
             return; // Hentikan eksekusi lebih lanjut
@@ -919,7 +1080,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Cek jika query adalah nama model, dan jika ya, panggil model tersebut
         const modelPrefixMatch = query.match(/^(falcon:|gemini:|claude:|deepseek:|chatgpt:)/i);
         if (!modelPrefixMatch) {
-            // Jika tidak ada prefix, gunakan model yang aktif
+            // Jika tidak ada prefix, dan model aktif adalah model lokal, tangani
+            if (['webllm', 'tinylama', 'qwen'].includes(activeModel)) {
+                handleLocalModelQuery(query, activeModel); return;
+            }
             const activeModelFunction = window[`query${activeModel.charAt(0).toUpperCase() + activeModel.slice(1)}`];
             if (activeModelFunction) {
                 activeModelFunction(query);
@@ -938,14 +1102,14 @@ document.addEventListener('DOMContentLoaded', () => {
         await new Promise(resolve => setTimeout(resolve, 300));
         const response = await calculateExpression(query); // Menambahkan await
         let responseContent;
-        if (response.error) {
-            // Jika perintah tidak dikenali, lakukan pencarian web sebagai fallback
-            if (response.error.includes("Perintah tidak dikenali")) {
-                document.getElementById(thinkingId)?.remove(); // Hapus pesan "Menganalisis..."
-                searchWithSerper(query); // Panggil fungsi pencarian web
-                return; // Hentikan eksekusi lebih lanjut
+        if (response && response.error) {
+            // Jika perintah tidak dikenali, teruskan ke model AI aktif
+            const activeModelFunction = window[`query${activeModel.charAt(0).toUpperCase() + activeModel.slice(1)}`];
+            if (activeModelFunction) {
+                document.getElementById(thinkingId)?.remove(); // Hapus pesan "berpikir" dari fitur internal
+                activeModelFunction(query); // Panggil model AI
+                return;
             }
-            // Jika error lain, tampilkan pesan error
             responseContent = marked.parse(`❌ **Error:** ${response.error}`);
         } else {
             responseContent = response.result; // Result is already formatted (HTML or Markdown)
@@ -979,6 +1143,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
    async function calculateExpression(query) {
         const cleanQuery = query.trim().toLowerCase();
+
+        // --- Perintah Download Model Lokal ---
+        const downloadMatch = cleanQuery.match(/^download model (gemma|qwen|tinylama|tinylamma)/i);
+        if (downloadMatch) {
+            let modelType = downloadMatch[1];
+            if (modelType === 'gemma') modelType = 'webllm'; // Gemma adalah nama alias untuk WebLLM
+            if (modelType === 'tinylamma') modelType = 'tinylama'; // Koreksi typo
+
+            const config = window.modelConfigs[modelType];
+            if (window.localModels[config.id]) {
+                return { result: marked.parse(`✅ **Model ${config.name} sudah terunduh dan siap digunakan.**`) };
+            }
+            handleLocalModelDownloadCommand(modelType);
+            return { result: null }; // Respons akan ditangani secara asinkron
+        }
+
+        // Periksa perintah spesifik 'di mana saya' terlebih dahulu untuk menghindari konflik regex.
+        if (cleanQuery === 'di mana saya?' || cleanQuery === 'lokasi saya') return { result: createMyLocationMap() };
+
+        // --- Peningkatan Logika Peta & Lokasi ---
+        const mapQueryMatch = query.match(/^(?:di mana|tunjukkan|lokasi|peta untuk)\s+(.+)/i);
+        if (mapQueryMatch) {
+            const location = mapQueryMatch[1].trim();
+            return { result: createGlobalInteractiveMap(location) };
+        }
 
         // Pro Features
         if (cleanQuery === 'panduan' || cleanQuery === 'help') return { result: createHelpGuide() };
@@ -1037,20 +1226,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cleanQuery.includes('main ludo')) return { result: createLudoGame() };
         if (cleanQuery.includes('scan file') || cleanQuery.includes('pindai file')) return { result: await createFileScanner() };
         if (cleanQuery.includes('olahraga') || cleanQuery.includes('sports')) return { result: await createSportsTracker() };
-
         // Trip feature
         if (cleanQuery.startsWith('perjalanan ke:')) return { result: createTripInterface(query.substring(14).trim()) };
 
-        // Math Libraries Router 
-        // AI Model Router 
-        if (cleanQuery.startsWith('falcon:')) {
-            queryFalconAI(query.substring(7).trim());
-            return { result: null }; // Indicate that the response will be handled asynchronously
-        }
-        if (cleanQuery.startsWith('tinylama:')) {
-            queryTinyLlama(query.substring(9).trim());
-            return { result: null };
-        }
+        // AI Model Router
+        if (cleanQuery.startsWith('falcon:')) { queryFalconAI(query.substring(7).trim()); return { result: null }; }
+        if (cleanQuery.startsWith('webllm:')) { handleLocalModelQuery(query.substring(7).trim(), 'webllm'); return { result: null }; }
+        if (cleanQuery.startsWith('tinylama:')) { handleLocalModelQuery(query.substring(9).trim(), 'tinylama'); return { result: null }; }
+        if (cleanQuery.startsWith('qwen:')) { handleLocalModelQuery(query.substring(5).trim(), 'qwen'); return { result: null }; }
         if (cleanQuery.startsWith('search:') || cleanQuery.startsWith('cari:')) {
             searchWithSerper(query.substring(query.indexOf(':') + 1).trim());
             return { result: null }; // Indicate that the response will be handled asynchronously
@@ -1389,6 +1572,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return html;
     }
 
+    function createMyLocationMap() {
+        const mapId = `map-${Date.now()}`;
+        const html = `
+            <div class="p-6 rounded-lg text-black">
+                <h3 class="text-xl font-bold mb-4">📍 Lokasi Anda Saat Ini</h3>
+                <div id="${mapId}" class="map-container"></div>
+                <div id="map-info-${mapId}" class="mt-4 text-sm">Meminta izin lokasi dan mencari...</div>
+            </div>
+        `;
+        setTimeout(() => getCurrentLocation(mapId, true), 100); // `true` untuk reverse geocode
+        return html;
+    }
+
     window.searchMapLocation = async function(mapId, customLocation = null) {
         const searchInput = document.getElementById(`map-search-${mapId}`);
         const query = customLocation || searchInput?.value;
@@ -1419,22 +1615,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     mapData.map.setView([lat, lng], 10);
                     
                     const infoDiv = document.getElementById(`map-info-${mapId}`);
+                    const locationDescription = `Ditemukan: ${result.display_name}`;
                     if (infoDiv) {
-                        infoDiv.innerHTML = `<div class="bg-green-600 p-2 rounded">✅ Ditemukan: ${result.display_name}</div>`;
+                        infoDiv.innerHTML = `<div class="bg-green-600 p-2 rounded">✅ ${locationDescription}</div>`;
                     }
+                    // Baca deskripsi lokasi dengan suara
+                    speakText(locationDescription);
                 }
             } else {
                 const infoDiv = document.getElementById(`map-info-${mapId}`);
                 if (infoDiv) {
                     infoDiv.innerHTML = `<div class="bg-red-600 p-2 rounded">❌ Lokasi tidak ditemukan</div>`;
                 }
+                speakText(`Maaf, lokasi untuk ${query} tidak ditemukan.`);
             }
         } catch (error) {
             console.error('Error searching location:', error);
         }
     };
 
-    window.getCurrentLocation = function(mapId) {
+    window.getCurrentLocation = function(mapId, shouldReverseGeocode = false) {
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -1456,9 +1656,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         mapData.map.setView([lat, lng], 12);
                         
                         const infoDiv = document.getElementById(`map-info-${mapId}`);
-                        if (infoDiv) {
-                            infoDiv.innerHTML = `<div class="bg-blue-600 p-2 rounded">📍 Lokasi Anda: ${lat.toFixed(6)}, ${lng.toFixed(6)}</div>`;
+                        const locationText = `Lokasi Anda saat ini berada di koordinat ${lat.toFixed(4)}, ${lng.toFixed(4)}.`;
+                        if (infoDiv) infoDiv.innerHTML = `<div class="bg-blue-600 p-2 rounded">📍 ${locationText}</div>`;
+
+                        if (shouldReverseGeocode) {
+                            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                                .then(res => res.json())
+                                .then(data => {
+                                    const address = data.display_name || "Alamat tidak diketahui";
+                                    const fullDescription = `${locationText} Diperkirakan berada di sekitar ${address}.`;
+                                    if (infoDiv) infoDiv.innerHTML = `<div class="bg-blue-600 p-2 rounded">📍 ${fullDescription}</div>`;
+                                    speakText(fullDescription);
+                                })
+                                .catch(() => speakText(locationText)); // Baca koordinat jika geocode gagal
+                        } else {
+                            speakText(locationText);
                         }
+
                     }
                 },
                 (error) => {
@@ -2198,20 +2412,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return `
         Anda adalah asisten AI serbaguna yang ahli dalam berbagai bidang, termasuk pemrograman dan pembuatan teks kreatif. Anda terintegrasi dalam sebuah aplikasi web dengan fitur-fitur berikut.
 
+        **Memori Percakapan (Gunakan untuk konteks dan personalisasi):**
+        Berikut adalah beberapa interaksi terakhir dengan pengguna. Gunakan ini untuk memahami alur percakapan dan memberikan jawaban yang lebih relevan.
+        ---
+        ${(JSON.parse(localStorage.getItem("ai_brain")) || []).map(mem => `Pengguna: "${mem.question}"\nAnda: "${mem.answer}"`).join('\n')}
+        ---
+
         **Konteks Aplikasi (Gunakan untuk menjawab pertanyaan tentang kemampuan aplikasi):**
         - 'panduan': Menampilkan panduan lengkap.
         - 'peta: [lokasi]': Menampilkan peta.
         - 'buka file rahasia': Pengelola file pribadi. 
+        - 'waktu: [kapan] | [pesan]': Mengatur pengingat.
         - 'jadwal solat': Fitur Islami.
         - 'cuaca', 'gempa', 'pokemon', 'negara': Informasi dari API.
         - 'search: [query]': Pencarian web dengan AI.
         - Berbagai game seperti 'tictactoe', 'main ludo', dll.
         - Berbagai utilitas seperti 'kalender', 'password manager', 'koding', 'notepad', 'todo list'.
-
+ 
         **Instruksi Peran:**
         1.  **Jika permintaan terkait KODING:** Bertindaklah sebagai programmer ahli. Berikan jawaban yang jelas, contoh kode dalam blok markdown, dan penjelasan yang mendalam.
         2.  **Jika permintaan terkait PEMBUATAN TEKS (puisi, cerita, lirik):** Bertindaklah sebagai penulis kreatif.
-        3.  **Jika permintaan terkait FITUR APLIKASI:** Gunakan "Konteks Aplikasi" di atas untuk menjelaskan apa yang bisa Anda lakukan.
+        3.  **Jika permintaan terkait FITUR APLIKASI:** Gunakan "Konteks Aplikasi" di atas untuk menjelaskan apa yang bisa Anda lakukan. Jangan berhalusinasi tentang fitur yang tidak ada.
         4.  **Untuk permintaan lainnya:** Jawablah sebagai asisten umum yang informatif dan membantu.
         `;
     }
@@ -2267,9 +2488,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const fullPrompt = `${getUniversalAIContext()}\n\nPertanyaan Pengguna: "${prompt}"\n\nJawaban Anda:`;
 
                 const makeRequest = async (retryCount = 0) => {
-                    try {
+                    try { 
                         const response = await fetch(
-                            "https://api-inference.huggingface.co/models/tiiuae/falcon-2-11b",
+                            "https://api-inference.huggingface.co/models/tiiuae/falcon-7b-instruct",
                             {
                                 headers: {
                                     "Authorization": `Bearer ${apiKey}`,
@@ -2282,7 +2503,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         if (!response.ok) {
                             const errorBody = await response.text();
-                            const errorData = JSON.parse(errorBody);
+                            let errorData = {};
+                            try {
+                                errorData = JSON.parse(errorBody);
+                            } catch (e) {
+                                // Biarkan errorData kosong jika parsing gagal
+                            }
 
                             // Jika model sedang loading, coba lagi setelah beberapa detik
                             if (errorData.error && errorData.error.includes("is currently loading") && retryCount < 1) {
@@ -2292,7 +2518,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
 
                             throw new Error(`Gagal menghubungi Falcon AI. Status: ${response.status}. Pesan: ${errorBody}`);
-                }
+                        }
 
                         const result = await response.json();
                         const generatedText = result[0]?.generated_text || "Tidak ada respons teks yang valid dari Falcon AI.";
@@ -2308,6 +2534,129 @@ document.addEventListener('DOMContentLoaded', () => {
                 await makeRequest();
     }
             
+    // --- WebLLM (Local AI) - Unified Loader & Query Functions --- //
+    window.localModels = {}; // Cache untuk menyimpan instance model yang sudah dimuat
+    window.modelConfigs = {
+        'webllm': { id: "gemma-2b-it-q4f16_1-MLC", name: "Gemma (Google)", emoji: "🧠", size: "1.4 GB" },
+        'tinylama': { id: "TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC", name: "TinyLlama", emoji: "🦙", size: "0.6 GB" },
+        'qwen': { id: "Qwen2-0.5B-Instruct-q4f16_1-MLC", name: "Qwen (Alibaba)", emoji: "🐉", size: "0.3 GB" }
+    };
+
+    function createLocalModelDownloaderUI(prompt, thinkingId) {
+        const promptData = escapeHtml(JSON.stringify(prompt));
+        let buttonsHtml = '';
+        for (const key in window.modelConfigs) {
+            const config = window.modelConfigs[key];
+            const configData = escapeHtml(JSON.stringify(config));
+            buttonsHtml += `<button onclick="window.startLocalModelDownload(${promptData}, '${key}', ${configData}, '${thinkingId}')" class="interactive-button">${config.emoji} Unduh ${config.name} (${config.size})</button>`;
+        }
+
+        const content = `
+            <div class="prose dark:prose-invert">
+                <h3 class="text-xl font-bold mb-2">Unduh Model AI Lokal</h3>
+                <p class="text-sm text-gray-400 mb-4">Model AI akan berjalan sepenuhnya di browser Anda. Pilih model untuk diunduh. Proses ini hanya perlu dilakukan sekali.</p>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3 justify-center mt-4">
+                ${buttonsHtml}
+            </div>
+            <div id="progress-container-${thinkingId}" class="mt-4" style="display: none;">
+                <div class="progress-bar-container" style="width: 100%;">
+                    <div id="progress-bar-${thinkingId}" class="progress-bar" style="width: 0%;">0%</div>
+                </div>
+                <p id="progress-text-${thinkingId}" class="text-center text-sm mt-2 text-gray-400"></p>
+            </div>
+        `;
+        updateMessage(thinkingId, content, false);
+    }
+
+    function handleLocalModelDownloadCommand(modelType) {
+        const config = window.modelConfigs[modelType];
+        const prompt = `Perintah unduh untuk model ${config.name}`;
+        const thinkingId = addThinkingMessage(`Mempersiapkan unduhan untuk model ${config.name}...`);
+        // Langsung panggil fungsi yang memulai unduhan
+        window.startLocalModelDownload(prompt, modelType, config, thinkingId);
+    }
+
+    async function handleLocalModelQuery(prompt, modelType) {
+        const config = window.modelConfigs[modelType];
+        if (window.localModels[config.id]) {
+            // Model sudah dimuat, langsung jalankan query
+            queryLocalModel(prompt, modelType);
+        } else {
+            // Model belum dimuat, tampilkan UI unduhan
+            const thinkingId = addThinkingMessage(`Memeriksa model AI lokal...`);
+            createLocalModelDownloaderUI(prompt, thinkingId);
+        }
+    }
+
+    window.startLocalModelDownload = async (prompt, modelType, modelConfig, thinkingId) => {
+        // Sembunyikan tombol-tombol
+        document.querySelectorAll(`#${thinkingId} .interactive-button`).forEach(btn => btn.style.display = 'none');
+        // Tampilkan progress bar
+        document.getElementById(`progress-container-${thinkingId}`).style.display = 'block';
+
+        await queryLocalModel(prompt, modelType, thinkingId);
+    }
+
+    async function loadLocalModel(modelId, modelConfig, thinkingId) {
+        // Wait for the WebLLM library to be fully ready. This is the robust fix.
+        await webLLMReadyPromise;
+
+        if (window.localModels[modelId]) {
+            return window.localModels[modelId];
+        }
+
+        try {
+            const chat = new webllm.ChatModule();
+            
+            let downloadedBytes = 0;
+            let totalBytes = 0;
+
+            const initProgressCallback = (report) => {
+                const progressPercentage = (report.progress * 100).toFixed(0);
+                const progressBar = document.getElementById(`progress-bar-${thinkingId}`);
+                const progressText = document.getElementById(`progress-text-${thinkingId}`);
+                if (progressBar && progressText) {
+                    progressBar.style.width = `${report.progress * 100}%`;
+                    progressBar.textContent = `${Math.floor(report.progress * 100)}%`;
+                    progressText.innerHTML = `${report.text}<br><span class="text-gray-500">${(report.downloaded / 1024 / 1024).toFixed(2)} MB / ${(report.total / 1024 / 1024).toFixed(2)} MB</span>`;
+                }
+            };
+            
+            await chat.reload(modelId, undefined, { init: initProgressCallback });
+
+            window.localModels[modelId] = chat;
+            return chat;
+        } catch (error) {
+            const progressText = document.getElementById(`progress-text-${thinkingId}`);
+            if(progressText) progressText.innerHTML = `<span class="text-red-400">❌ Error: ${error.message}. Pastikan browser Anda mendukung WebGPU.</span>`;
+            throw error; // Lemparkan error agar pemanggilan selanjutnya berhenti
+        }
+    }
+
+    async function queryLocalModel(prompt, modelType, thinkingId = null) {
+        const modelConfig = window.modelConfigs[modelType];
+        const modelId = modelConfig.id;
+        
+        if (!thinkingId) {
+            thinkingId = addThinkingMessage(`Menyiapkan model AI lokal (${modelConfig.name})...`);
+        }
+
+        try {
+            const chat = await loadLocalModel(modelId, modelConfig, thinkingId);
+
+            const fullReply = await chat.generate(prompt, (step, message) => {
+                updateMessage(thinkingId, marked.parse(`**${modelConfig.emoji} Hasil dari ${modelConfig.name}:**\n\n${message}`), false);
+            });
+
+            // Final update dengan konten penuh
+            updateMessage(thinkingId, marked.parse(`**${modelConfig.emoji} Hasil dari ${modelConfig.name}:**\n\n${fullReply}`));
+        } catch (error) {
+            // Error sudah ditangani di loadLocalModel, jadi tidak perlu update message lagi di sini.
+            console.error(`Gagal menjalankan query untuk ${modelConfig.name}:`, error);
+        }
+    }
+
             // --- ChatGPT (OpenAI) ---
             async function queryChatGPT(prompt) {
                 const thinkingId = addThinkingMessage(`Menghubungi ChatGPT untuk: "${escapeHtml(prompt)}"...`);
@@ -2317,7 +2666,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 try {
-                    const fullPrompt = `${getUniversalAIContext()}\n\nPertanyaan Pengguna: "${prompt}"\n\nJawaban Anda:`;
                     const response = await fetch("https://api.openai.com/v1/chat/completions", {
                         method: "POST",
                         headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -2351,13 +2699,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 try {
-                    const fullPrompt = `${getUniversalAIContext()}\n\nPertanyaan Pengguna: "${prompt}"\n\nJawaban Anda:`;
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${apiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: fullPrompt }] }]
-                        }),
+                        body: JSON.stringify({ 
+                            contents: [{ role: "user", parts: [{ text: prompt }] }],
+                            systemInstruction: { parts: [{ text: getUniversalAIContext() }] }
+                        }), 
                     });
                     if (!response.ok) {
                         const errorBody = await response.text();
@@ -2383,18 +2731,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 try {
-                    const fullPrompt = `${getUniversalAIContext()}\n\nPertanyaan Pengguna: "${prompt}"\n\nJawaban Anda:`;
                     // Note: Anthropic API requires a proxy to be called from the browser due to CORS.
-                    // This example uses a simple proxy. For production, use a more robust solution.
-                    const response = await fetch("https://cors-anywhere.herokuapp.com/https://api.anthropic.com/v1/messages", {
+                    // Menggunakan proxy sederhana untuk mengatasi masalah CORS.
+                    const response = await fetch("https://corsproxy.io/?https://api.anthropic.com/v1/messages", {
                         method: "POST",
                         headers: {
                             "x-api-key": apiKey,
                             "anthropic-version": "2023-06-01",
                             "Content-Type": "application/json"
                         },
-                        body: JSON.stringify({
+                        body: JSON.stringify({ 
                             model: "claude-3-5-sonnet-20240620",
+                            system: getUniversalAIContext(),
                             max_tokens: 350,
                             messages: [{ role: "user", content: fullPrompt }]
                         }),
@@ -2422,14 +2770,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateMessage(thinkingId, marked.parse(`❌ **Error DeepSeek:** API Key tidak ditemukan. Atur dengan perintah \`apikey deepseek\`.`));
                     return;
                 }
-                const fullPrompt = `${getUniversalAIContext()}\n\nPertanyaan Pengguna: "${prompt}"\n\nJawaban Anda:`;
                 
                 const makeRequest = async (retryCount = 0) => {
                     try {
                         const response = await fetch("https://api-inference.huggingface.co/models/deepseek-ai/DeepSeek-V2-Chat", {
                             method: "POST",
                             headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-                            body: JSON.stringify({ inputs: fullPrompt, parameters: { max_new_tokens: 350, return_full_text: false, temperature: 0.7 } }),
+                            body: JSON.stringify({ 
+                                inputs: {
+                                    messages: [{ role: "system", content: getUniversalAIContext() }, { role: "user", content: prompt }]
+                                },
+                                parameters: { max_new_tokens: 350, return_full_text: false, temperature: 0.7 } 
+                            }),
                         });
                         if (!response.ok) {
                             const errorBody = await response.text();
@@ -2515,6 +2867,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button onclick="triggerCommand('gemini: apa itu black hole', 'Tanyakan sesuatu pada Gemini')" class="example-prompt-button"><div class="font-semibold">Tanya Gemini</div><div class="text-sm text-indigo-500 dark:text-indigo-400">Model AI dari Google.</div></button>
                     <button onclick="triggerCommand('deepseek: buat fungsi python untuk fibonacci', 'Minta kode pada DeepSeek')" class="example-prompt-button"><div class="font-semibold">Tanya DeepSeek</div><div class="text-sm text-indigo-500 dark:text-indigo-400">Model AI khusus koding.</div></button>
                     <button onclick="triggerCommand('apikey gemini', 'Pilih model: gemini, falcon, dll.')" class="example-prompt-button"><div class="font-semibold">Set API Key</div><div class="text-sm text-indigo-500 dark:text-indigo-400">Atur kunci API untuk model AI.</div></button>
+                    <button onclick="triggerCommand('webllm: jelaskan apa itu webllm')" class="example-prompt-button"><div class="font-semibold">Tanya WebLLM</div><div class="text-sm text-indigo-500 dark:text-indigo-400">Model AI lokal di browser.</div></button>
                 </div>
             </div>
         </div>`;
@@ -2893,50 +3246,115 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     window.createTicTacToeGame = () => {
         const id = `tictactoe-${Date.now()}`;
-        window.ticTacToeStates = window.ticTacToeStates || {};
-        window.ticTacToeStates[id] = { board: Array(9).fill(null), isGameOver: false }; 
+        if (!window.ticTacToeStates) window.ticTacToeStates = {};
+        // Inisialisasi state game dengan riwayat langkah
+        window.ticTacToeStates[id] = { 
+            board: Array(9).fill(null), 
+            isGameOver: false,
+            history: [] // Untuk menyimpan { board, move, player }
+        }; 
         setTimeout(() => {
             const statusDiv = document.getElementById(`status-${id}`);
-            if (statusDiv) statusDiv.textContent = 'Anda memulai permainan.';
+            if (statusDiv) statusDiv.textContent = 'Giliran Anda untuk memulai.';
         }, 100);
 
         let cells = Array.from({length: 9}, (_, i) => `<div class="tictactoe-cell flex justify-center items-center text-4xl" onclick="window.playerMove(${i}, '${id}')"></div>`).join('');
         return `
         <div class="feature-container text-center text-black" id="${id}"> 
-            <h3 class="text-lg font-bold">⚔️ Tic Tac Toe vs AI</h3>
-            <div id="status-${id}" class="my-2 h-6"></div>
+            <h3 class="text-lg font-bold">⚔️ Tic Tac Toe vs AI (Pembelajar)</h3>
+            <div id="status-${id}" class="my-2 h-6 font-semibold"></div>
             <div class="tictactoe-board">${cells}</div>
             <button onclick="window.resetTicTacToe('${id}')" class="interactive-button mt-2">Mulai Ulang</button>
         </div>`;
     }
     window.playerMove = (index, id) => {
         const state = window.ticTacToeStates[id];
-        if (state.isGameOver || state.board[index]) return;
+        if (!state || state.isGameOver || state.board[index]) return;
+
+        // Simpan langkah pemain
+        state.history.push({ board: [...state.board], move: index, player: '❌' });
         state.board[index] = '❌';
         updateTicTacToeBoard(id);
+
         if (checkWinner(id)) return;
+
         document.getElementById(`status-${id}`).textContent = 'AI sedang berpikir...';
-        setTimeout(() => { aiMove(id); updateTicTacToeBoard(id); checkWinner(id); }, 500);
+        setTimeout(() => { 
+            const aiMoveIndex = getAIMove(id);
+            if (aiMoveIndex !== -1) {
+                // Simpan langkah AI
+                state.history.push({ board: [...state.board], move: aiMoveIndex, player: '⭕' });
+                state.board[aiMoveIndex] = '⭕';
+            }
+            updateTicTacToeBoard(id); 
+            checkWinner(id); 
+        }, 700); // Beri jeda agar terasa seperti berpikir
     }
-    function aiMove(id) {
+
+    function getAIMove(id) {
         const state = window.ticTacToeStates[id];
-        let availableMoves = [];
-        state.board.forEach((cell, index) => { if (!cell) availableMoves.push(index); });
-        if (availableMoves.length > 0) {
-            const move = availableMoves[Math.floor(Math.random() * availableMoves.length)];
-            state.board[move] = '⭕';
+        const board = state.board;
+        const boardKey = board.join(',');
+
+        const winningMoves = JSON.parse(localStorage.getItem('tictactoe_winning_moves') || '{}');
+        const losingBlocks = JSON.parse(localStorage.getItem('tictactoe_losing_blocks') || '{}');
+
+        // 1. Cek jika AI bisa menang sekarang
+        for (let i = 0; i < 9; i++) {
+            if (!board[i]) {
+                board[i] = '⭕';
+                if (isWinner(board, '⭕')) { board[i] = null; return i; }
+                board[i] = null;
+            }
         }
+
+        // 2. Cek jika pemain bisa menang, lalu blok
+        for (let i = 0; i < 9; i++) {
+            if (!board[i]) {
+                board[i] = '❌';
+                if (isWinner(board, '❌')) { board[i] = null; return i; }
+                board[i] = null;
+            }
+        }
+
+        // 3. Gunakan strategi kemenangan yang dipelajari
+        if (winningMoves[boardKey] !== undefined && !board[winningMoves[boardKey]]) {
+            return winningMoves[boardKey];
+        }
+
+        // 4. Gunakan strategi blokir yang dipelajari
+        if (losingBlocks[boardKey] !== undefined && !board[losingBlocks[boardKey]]) {
+            return losingBlocks[boardKey];
+        }
+
+        // 5. Ambil posisi tengah jika kosong
+        if (!board[4]) return 4;
+
+        // 6. Ambil sudut jika kosong
+        const corners = [0, 2, 6, 8].filter(i => !board[i]);
+        if (corners.length > 0) return corners[Math.floor(Math.random() * corners.length)];
+
+        // 7. Ambil sisi jika kosong
+        const sides = [1, 3, 5, 7].filter(i => !board[i]);
+        if (sides.length > 0) return sides[Math.floor(Math.random() * sides.length)];
+
+        return -1; // Tidak ada langkah tersedia
     }
+
+    function isWinner(board, player) {
+        const winningCombos = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+        return winningCombos.some(combo => combo.every(index => board[index] === player));
+    }
+
     function checkWinner(id) {
         const state = window.ticTacToeStates[id];
+        if (!state) return false;
         const statusDiv = document.getElementById(`status-${id}`);
-        const winningCombos = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-        for (const combo of winningCombos) {
-            const [a, b, c] = combo;
-            if (state.board[a] && state.board[a] === state.board[b] && state.board[a] === state.board[c]) {
-                state.isGameOver = true;
-                statusDiv.textContent = `${state.board[a]} Menang!`; return true;
-            }
+        
+        if (isWinner(state.board, '❌')) {
+            state.isGameOver = true; statusDiv.textContent = `Anda Menang! AI belajar dari kekalahan ini.`; learnFromLoss(state.history); return true;
+        } else if (isWinner(state.board, '⭕')) {
+            state.isGameOver = true; statusDiv.textContent = `AI Menang! Strategi disimpan.`; learnFromWin(state.history); return true;
         }
         if (!state.board.includes(null)) {
             state.isGameOver = true; statusDiv.textContent = "Permainan Seri!"; return true;
@@ -2944,12 +3362,46 @@ document.addEventListener('DOMContentLoaded', () => {
         statusDiv.textContent = `Giliran ${state.board.filter(Boolean).length % 2 === 0 ? 'Anda' : 'AI'}`;
         return false;
     }
+
+    function learnFromWin(history) {
+        const winningMoves = JSON.parse(localStorage.getItem('tictactoe_winning_moves') || '{}');
+        history.forEach(step => {
+            if (step.player === '⭕') {
+                const boardKey = step.board.join(',');
+                // Simpan langkah ini sebagai langkah yang baik untuk kondisi papan ini
+                if (!winningMoves[boardKey]) {
+                    winningMoves[boardKey] = step.move;
+                }
+            }
+        });
+        localStorage.setItem('tictactoe_winning_moves', JSON.stringify(winningMoves));
+    }
+
+    function learnFromLoss(history) {
+        const losingBlocks = JSON.parse(localStorage.getItem('tictactoe_losing_blocks') || '{}');
+        // Langkah terakhir adalah kemenangan pemain. Kita perlu melihat langkah AI sebelumnya.
+        if (history.length < 2) return;
+
+        const playerWinningMove = history[history.length - 1];
+        const boardBeforePlayerWins = playerWinningMove.board;
+        const movePlayerMadeToWin = playerWinningMove.move;
+
+        // Kunci adalah kondisi papan SEBELUM pemain menang.
+        // Nilai adalah langkah yang SEHARUSNYA diambil AI untuk memblokir.
+        const boardKey = boardBeforePlayerWins.join(',');
+        if (!losingBlocks[boardKey]) {
+            losingBlocks[boardKey] = movePlayerMadeToWin;
+        }
+        
+        localStorage.setItem('tictactoe_losing_blocks', JSON.stringify(losingBlocks));
+    }
+
     function updateTicTacToeBoard(id) {
         const state = window.ticTacToeStates[id];
+        if (!state) return;
         const boardEl = document.getElementById(id).querySelector('.tictactoe-board');
-        boardEl.childNodes.forEach((cell, index) => {
+        Array.from(boardEl.children).forEach((cell, index) => {
             cell.textContent = state.board[index];
-            cell.className = 'tictactoe-cell';
             if(state.board[index]) cell.classList.add('occupied', state.board[index]);
         });
     }
